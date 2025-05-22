@@ -167,6 +167,35 @@ trades_record = trades_record.fillna(0)
 
 trades_record = trades_record.reset_index().rename(columns={'index': 'datetime'})
 
+nav = trades_record['pnl'].cumsum() + 5000000
+returns = nav.pct_change().fillna(0)
+
+# Sharpe Ratio
+sharpe_ratio = (returns.mean() / returns.std()) * (365 * 24 * 12) ** 0.5 if returns.std() > 0 else 0  # 5min bar annualized
+
+# Max Drawdown
+running_max = nav.cummax()
+drawdown = (nav - running_max) / running_max
+max_drawdown = drawdown.min()
+
+# 勝率
+num_win = (trades_record['pnl'] > 0).sum()
+num_total = (trades_record['pnl'] != 0).sum()
+win_rate = num_win / num_total if num_total > 0 else 0
+
+# 輸出統計
+with open(f"record/{strategy}/summary.txt", "w") as f:
+    f.write(f"總損益: {sum_return:.2f}\n")
+    f.write(f"Sharpe Ratio: {sharpe_ratio:.4f}\n")
+    f.write(f"Max Drawdown: {max_drawdown:.2%}\n")
+    f.write(f"Win Rate: {win_rate:.2%}\n")
+
+print(f"總損益: {sum_return:.2f}")
+print(f"Sharpe Ratio: {sharpe_ratio:.4f}")
+print(f"Max Drawdown: {max_drawdown:.2%}")
+print(f"Win Rate: {win_rate:.2%}")
+
+
 fig, axs = plt.subplots(2, 1, figsize=(14, 8), sharex=True, gridspec_kw={'height_ratios': [1, 2]})
 
 # pnl 累積圖（上圖）

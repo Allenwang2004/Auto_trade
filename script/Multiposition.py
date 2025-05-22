@@ -108,7 +108,7 @@ pnl_by_strategy = all_trades.pivot_table(
     aggfunc='sum'
 ).fillna(0)
 
-pnl_by_strategy['combined'] = pnl_by_strategy.sum(axis=1)
+pnl_by_strategy['combined'] = pnl_by_strategy.sum(axis=1)/5
 cumulative_pnl = pnl_by_strategy.cumsum()
 
 # === 畫圖 ===
