@@ -1,3 +1,0 @@
-Sharpe Ratio: -229.2597
-Max Drawdown: -2.01%
-Win Rate: 0.00%

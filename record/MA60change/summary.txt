@@ -1,0 +1,5 @@
+最佳參數: {'limbars': 10, 'limbars2': 30, 'spread': 0.001, 'trailing_stop_pct': 0.04}
+In-sample PnL: 28853.31
+Out-of-sample PnL: 32244.37
+Sharpe Ratio: 5.6609
+Max Drawdown: -0.64%
