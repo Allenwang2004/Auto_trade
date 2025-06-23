@@ -1,0 +1,5 @@
+最佳參數: {'long_trailing_stop_pct': 0.05, 'long_stop_loss_pct': 0.005}
+In-sample PnL: 23298.94
+Out-of-sample PnL: -15164.40
+Sharpe Ratio: 0.8463
+Max Drawdown: -0.81%

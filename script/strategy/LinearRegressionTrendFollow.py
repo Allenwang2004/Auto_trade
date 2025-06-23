@@ -1,35 +1,28 @@
 import backtrader as bt
 import datetime
+import numpy as np
 from skopt.space import Categorical
 
-class MA60change(bt.Strategy):
+class LinearRegressionTrendFollow(bt.Strategy):
     params = dict(
-        long_trailing_stop_pct=0.03,
-        short_trailing_stop_pct=0.03,
-        long_stop_loss_pct=0.01,
-        short_stop_loss_pct=0.01
+        lookback=20,
+        trailing_stop_pct=0.03,
+        stop_loss_pct=0.01
     )
 
     @classmethod
     def get_opt_space(cls):
         return [
-            Categorical([0.01, 0.02, 0.03, 0.04, 0.05]),
-            Categorical([0.01, 0.02, 0.03, 0.04, 0.05]),
-            Categorical([0.005, 0.01, 0.015, 0.02]),
-            Categorical([0.005, 0.01, 0.015, 0.02])
+            Categorical([10, 15, 20, 25, 30]),          # lookback
+            Categorical([0.01, 0.02, 0.03, 0.04]),      # trailing stop
+            Categorical([0.005, 0.01, 0.015, 0.02])     # stop loss
         ]
 
     @classmethod
     def param_names(cls):
-        return [
-            'long_trailing_stop_pct',
-            'short_trailing_stop_pct',
-            'long_stop_loss_pct',
-            'short_stop_loss_pct'
-        ]
+        return ['lookback', 'trailing_stop_pct', 'stop_loss_pct']
 
     def __init__(self):
-        self.sma60 = bt.indicators.SMA(self.data.close, period=60)
         self.trade_records = []
         self.nav_records = []
         self.highest_price = None
@@ -37,11 +30,8 @@ class MA60change(bt.Strategy):
         self.entry_price = None
 
     def notify_order(self, order):
-        if order.status in [order.Completed, order.Canceled, order.Margin]:
-            if order.status == order.Completed and order.isbuy():
-                self.entry_price = order.executed.price
-            elif order.status == order.Completed and order.issell():
-                self.entry_price = order.executed.price
+        if order.status in [order.Completed]:
+            self.entry_price = order.executed.price
 
     def notify_trade(self, trade):
         if trade.isclosed:
@@ -55,28 +45,44 @@ class MA60change(bt.Strategy):
 
     def next(self):
         close = self.data.close[0]
-        nav = self.broker.getvalue()
+        dt = self.data.datetime.datetime(0)
+
+        # === 資產紀錄 ===
         position_value = self.position.size * close
+        nav = self.broker.get_cash() + position_value
         self.nav_records.append({
-            'datetime': self.data.datetime.datetime(0).isoformat(),
-            'nav': nav,
-            'cash': self.broker.get_cash(),
-            'position_value': position_value,
-            'position_size': self.position.size if self.position else 0,
+            'datetime': dt.isoformat(),
+            'nav': nav
         })
 
-        long_signal = self.sma60[0] - self.sma60[-1] > 0 and self.sma60[-1] - self.sma60[-2] < 0
-        short_signal = self.sma60[0] - self.sma60[-1] < 0 and self.sma60[-1] - self.sma60[-2] > 0
+        # === 不足回歸資料長度，跳過 ===
+        if len(self) < self.p.lookback:
+            return
 
+        # === 計算回歸線最後一點值 ===
+        y = np.array([self.data.close[-i] for i in range(self.p.lookback)][::-1])
+        x = np.arange(self.p.lookback)
+        slope, intercept = np.polyfit(x, y, 1)
+        reg_value = slope * (self.p.lookback - 1) + intercept
+
+        # === 產生突破訊號 ===
+        long_signal = close > reg_value
+        short_signal = close < reg_value
+
+        # === 有持倉 ===
         if self.position:
             if self.position.size > 0:
+                # 更新最高價
                 self.highest_price = max(self.highest_price or close, close)
-                if close < self.highest_price * (1 - self.p.long_trailing_stop_pct):
+                # 移動止盈
+                if close < self.highest_price * (1 - self.p.trailing_stop_pct):
                     self.close()
                     return
-                if self.entry_price and close < self.entry_price * (1 - self.p.long_stop_loss_pct):
+                # 固定止損
+                if self.entry_price and close < self.entry_price * (1 - self.p.stop_loss_pct):
                     self.close()
                     return
+                # 反向訊號
                 if short_signal:
                     self.close()
                     self.sell(size=1)
@@ -84,18 +90,24 @@ class MA60change(bt.Strategy):
                     return
 
             elif self.position.size < 0:
+                # 更新最低價
                 self.lowest_price = min(self.lowest_price or close, close)
-                if close > self.lowest_price * (1 + self.p.short_trailing_stop_pct):
+                # 移動止盈
+                if close > self.lowest_price * (1 + self.p.trailing_stop_pct):
                     self.close()
                     return
-                if self.entry_price and close > self.entry_price * (1 + self.p.short_stop_loss_pct):
+                # 固定止損
+                if self.entry_price and close > self.entry_price * (1 + self.p.stop_loss_pct):
                     self.close()
                     return
+                # 反向訊號
                 if long_signal:
                     self.close()
                     self.buy(size=1)
                     self.highest_price = close
                     return
+
+        # === 無持倉：開倉邏輯 ===
         else:
             if long_signal:
                 self.buy(size=1)
@@ -103,4 +115,3 @@ class MA60change(bt.Strategy):
             elif short_signal:
                 self.sell(size=1)
                 self.lowest_price = close
-

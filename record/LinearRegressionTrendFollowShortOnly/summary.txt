@@ -1,0 +1,5 @@
+最佳參數: {'lookback': 20, 'trailing_stop_pct': 0.03, 'stop_loss_pct': 0.015}
+In-sample PnL: 8164.95
+Out-of-sample PnL: -62141.60
+Sharpe Ratio: -3.4704
+Max Drawdown: -1.73%

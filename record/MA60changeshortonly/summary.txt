@@ -1,0 +1,5 @@
+最佳參數: {'short_trailing_stop_pct': 0.03, 'short_stop_loss_pct': 0.01}
+In-sample PnL: 6515.67
+Out-of-sample PnL: -19237.60
+Sharpe Ratio: -1.5110
+Max Drawdown: -0.86%
