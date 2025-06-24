@@ -1,0 +1,7 @@
+最佳參數: {'trailing_stop_pct': 0.01, 'stop_loss_pct': 0.005, 'ssma_period': 20}
+In-sample PnL: 29230.74
+Out-of-sample PnL: 638.00
+Sharpe Ratio: 4.0005
+Max Drawdown: -0.31%
+Annualized Return: 16.52%
+Average Trade Per Days: 0.23

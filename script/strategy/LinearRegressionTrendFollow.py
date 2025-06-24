@@ -37,7 +37,10 @@ class LinearRegressionTrendFollow(bt.Strategy):
         if trade.isclosed:
             self.trade_records.append({
                 'datetime': self.data.datetime.datetime(0).isoformat(),
-                'pnl': trade.pnl,
+                'pnl': (trade.pnl-10),
+                'entry_price': self.entry_price,
+                'exit_price': trade.price,
+                'return': (trade.pnl-10) / self.entry_price if self.entry_price else 0
             })
             self.highest_price = None
             self.lowest_price = None
@@ -55,34 +58,35 @@ class LinearRegressionTrendFollow(bt.Strategy):
             'nav': nav
         })
 
-        # === 不足回歸資料長度，跳過 ===
         if len(self) < self.p.lookback:
             return
 
-        # === 計算回歸線最後一點值 ===
-        y = np.array([self.data.close[-i] for i in range(self.p.lookback)][::-1])
+        # === 回歸線：最高價與最低價 ===
+        high_prices = np.array([self.data.high[-i] for i in range(self.p.lookback)][::-1])
+        low_prices = np.array([self.data.low[-i] for i in range(self.p.lookback)][::-1])
         x = np.arange(self.p.lookback)
-        slope, intercept = np.polyfit(x, y, 1)
-        reg_value = slope * (self.p.lookback - 1) + intercept
 
-        # === 產生突破訊號 ===
-        long_signal = close > reg_value
-        short_signal = close < reg_value
+        high_slope, high_intercept = np.polyfit(x, high_prices, 1)
+        low_slope, low_intercept = np.polyfit(x, low_prices, 1)
+
+        high_line = high_slope * (self.p.lookback - 1) + high_intercept
+        low_line = low_slope * (self.p.lookback - 1) + low_intercept
+
+        # === 開倉訊號 ===
+        long_signal = close > high_line
+        short_signal = close < low_line
 
         # === 有持倉 ===
         if self.position:
             if self.position.size > 0:
-                # 更新最高價
                 self.highest_price = max(self.highest_price or close, close)
-                # 移動止盈
                 if close < self.highest_price * (1 - self.p.trailing_stop_pct):
                     self.close()
                     return
-                # 固定止損
                 if self.entry_price and close < self.entry_price * (1 - self.p.stop_loss_pct):
                     self.close()
                     return
-                # 反向訊號
+                # 多單時出現做空訊號（向下突破最低價回歸線）
                 if short_signal:
                     self.close()
                     self.sell(size=1)
@@ -90,24 +94,21 @@ class LinearRegressionTrendFollow(bt.Strategy):
                     return
 
             elif self.position.size < 0:
-                # 更新最低價
                 self.lowest_price = min(self.lowest_price or close, close)
-                # 移動止盈
                 if close > self.lowest_price * (1 + self.p.trailing_stop_pct):
                     self.close()
                     return
-                # 固定止損
                 if self.entry_price and close > self.entry_price * (1 + self.p.stop_loss_pct):
                     self.close()
                     return
-                # 反向訊號
+                # 空單時出現做多訊號（突破最高價回歸線）
                 if long_signal:
                     self.close()
                     self.buy(size=1)
                     self.highest_price = close
                     return
 
-        # === 無持倉：開倉邏輯 ===
+        # === 無持倉 ===
         else:
             if long_signal:
                 self.buy(size=1)

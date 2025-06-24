@@ -2,21 +2,23 @@ import backtrader as bt
 import datetime
 from skopt.space import Categorical
 
-class MA60change(bt.Strategy):
+class SSMAchange(bt.Strategy):
     params = dict(
         long_trailing_stop_pct=0.03,
         short_trailing_stop_pct=0.03,
         long_stop_loss_pct=0.01,
-        short_stop_loss_pct=0.01
+        short_stop_loss_pct=0.01,
+        ssma_period=30
     )
 
     @classmethod
     def get_opt_space(cls):
         return [
-            Categorical([0.01, 0.02, 0.03, 0.04, 0.05]),
-            Categorical([0.01, 0.02, 0.03, 0.04, 0.05]),
-            Categorical([0.005, 0.01, 0.015, 0.02]),
-            Categorical([0.005, 0.01, 0.015, 0.02])
+            Categorical([0.01, 0.02, 0.03, 0.04, 0.05]),  # long_trailing_stop_pct
+            Categorical([0.01, 0.02, 0.03, 0.04, 0.05]),  # short_trailing_stop_pct
+            Categorical([0.005, 0.01, 0.015, 0.02]),      # long_stop_loss_pct
+            Categorical([0.005, 0.01, 0.015, 0.02]),       # short_stop_loss_pct
+            Categorical([10, 20, 30, 40, 50])            # ssma_period
         ]
 
     @classmethod
@@ -25,11 +27,12 @@ class MA60change(bt.Strategy):
             'long_trailing_stop_pct',
             'short_trailing_stop_pct',
             'long_stop_loss_pct',
-            'short_stop_loss_pct'
+            'short_stop_loss_pct',
+            'ssma_period'
         ]
 
     def __init__(self):
-        self.sma60 = bt.indicators.SMA(self.data.close, period=30)
+        self.ssma = bt.ind.SmoothedMovingAverage(self.data.close, period=self.p.ssma_period)
         self.trade_records = []
         self.nav_records = []
         self.highest_price = None
@@ -38,19 +41,18 @@ class MA60change(bt.Strategy):
 
     def notify_order(self, order):
         if order.status in [order.Completed, order.Canceled, order.Margin]:
-            if order.status == order.Completed and order.isbuy():
-                self.entry_price = order.executed.price
-            elif order.status == order.Completed and order.issell():
+            if order.status == order.Completed:
                 self.entry_price = order.executed.price
 
     def notify_trade(self, trade):
         if trade.isclosed:
+            cost = 10  # 固定滑價+手續費成本
             self.trade_records.append({
                 'datetime': self.data.datetime.datetime(0).isoformat(),
-                'pnl': (trade.pnl-10),
+                'pnl': trade.pnl - cost,
                 'entry_price': self.entry_price,
                 'exit_price': trade.price,
-                'return': (trade.pnl-10) / self.entry_price if self.entry_price else 0
+                'return': (trade.pnl - cost) / self.entry_price if self.entry_price else 0
             })
             self.highest_price = None
             self.lowest_price = None
@@ -60,6 +62,7 @@ class MA60change(bt.Strategy):
         close = self.data.close[0]
         nav = self.broker.getvalue()
         position_value = self.position.size * close
+
         self.nav_records.append({
             'datetime': self.data.datetime.datetime(0).isoformat(),
             'nav': nav,
@@ -68,8 +71,9 @@ class MA60change(bt.Strategy):
             'position_size': self.position.size if self.position else 0,
         })
 
-        long_signal = self.sma60[0] - self.sma60[-1] > 0 and self.sma60[-1] - self.sma60[-2] < 0
-        short_signal = self.sma60[0] - self.sma60[-1] < 0 and self.sma60[-1] - self.sma60[-2] > 0
+        # 訊號邏輯：使用 SSMA 斜率轉折判斷
+        long_signal = self.ssma[0] - self.ssma[-1] > 0 and self.ssma[-1] - self.ssma[-2] < 0
+        short_signal = self.ssma[0] - self.ssma[-1] < 0 and self.ssma[-1] - self.ssma[-2] > 0
 
         if self.position:
             if self.position.size > 0:
@@ -99,6 +103,7 @@ class MA60change(bt.Strategy):
                     self.buy(size=1)
                     self.highest_price = close
                     return
+
         else:
             if long_signal:
                 self.buy(size=1)
@@ -106,4 +111,3 @@ class MA60change(bt.Strategy):
             elif short_signal:
                 self.sell(size=1)
                 self.lowest_price = close
-

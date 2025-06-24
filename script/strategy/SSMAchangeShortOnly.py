@@ -1,28 +1,27 @@
 import backtrader as bt
-import datetime
-import numpy as np
 from skopt.space import Categorical
 
-class LinearRegressionTrendFollowShortOnly(bt.Strategy):
+class SSMAchangeShortOnly(bt.Strategy):
     params = dict(
-        lookback=20,
         trailing_stop_pct=0.03,
-        stop_loss_pct=0.01
+        stop_loss_pct=0.01,
+        ssma_period=30
     )
 
     @classmethod
     def get_opt_space(cls):
         return [
-            Categorical([10, 15, 20, 25, 30]),          # lookback
-            Categorical([0.01, 0.02, 0.03, 0.04]),      # trailing stop
-            Categorical([0.005, 0.01, 0.015, 0.02])     # stop loss
+            Categorical([0.01, 0.02, 0.03, 0.04, 0.05]),     # trailing_stop_pct
+            Categorical([0.005, 0.01, 0.015, 0.02]),         # stop_loss_pct
+            Categorical([10, 20, 30, 40, 50])                # ssma_period
         ]
 
     @classmethod
     def param_names(cls):
-        return ['lookback', 'trailing_stop_pct', 'stop_loss_pct']
+        return ['trailing_stop_pct', 'stop_loss_pct', 'ssma_period']
 
     def __init__(self):
+        self.ssma = bt.ind.SmoothedMovingAverage(self.data.close, period=self.p.ssma_period)
         self.trade_records = []
         self.nav_records = []
         self.lowest_price = None
@@ -34,32 +33,31 @@ class LinearRegressionTrendFollowShortOnly(bt.Strategy):
 
     def notify_trade(self, trade):
         if trade.isclosed:
+            cost = 10
             self.trade_records.append({
                 'datetime': self.data.datetime.datetime(0).isoformat(),
-                'pnl': (trade.pnl-10),
+                'pnl': trade.pnl - cost,
                 'entry_price': self.entry_price,
                 'exit_price': trade.price,
-                'return': (trade.pnl-10) / self.entry_price if self.entry_price else 0
+                'return': (trade.pnl - cost) / self.entry_price if self.entry_price else 0
             })
             self.lowest_price = None
             self.entry_price = None
 
     def next(self):
         close = self.data.close[0]
-        dt = self.data.datetime.datetime(0)
+        self.nav_records.append({
+            'datetime': self.data.datetime.datetime(0).isoformat(),
+            'nav': self.broker.getvalue(),
+            'cash': self.broker.get_cash(),
+            'position_value': self.position.size * close,
+            'position_size': self.position.size
+        })
 
-        position_value = self.position.size * close
-        nav = self.broker.get_cash() + position_value
-        self.nav_records.append({'datetime': dt.isoformat(), 'nav': nav})
-
-        if len(self) < self.p.lookback:
+        if len(self) < self.p.ssma_period + 2:
             return
 
-        low_prices = np.array([self.data.low[-i] for i in range(self.p.lookback)][::-1])
-        x = np.arange(self.p.lookback)
-        slope, intercept = np.polyfit(x, low_prices, 1)
-        low_line = slope * (self.p.lookback - 1) + intercept
-        short_signal = close < low_line
+        short_signal = self.ssma[0] - self.ssma[-1] < 0 and self.ssma[-1] - self.ssma[-2] > 0
 
         if self.position:
             self.lowest_price = min(self.lowest_price or close, close)

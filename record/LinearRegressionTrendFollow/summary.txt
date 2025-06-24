@@ -1,5 +1,7 @@
-最佳參數: {'lookback': 10, 'trailing_stop_pct': 0.04, 'stop_loss_pct': 0.005}
-In-sample PnL: 78088.51
-Out-of-sample PnL: 56763.90
-Sharpe Ratio: 7.2301
-Max Drawdown: -0.74%
+最佳參數: {'lookback': 10, 'trailing_stop_pct': 0.02, 'stop_loss_pct': 0.02}
+In-sample PnL: 29721.11
+Out-of-sample PnL: -47917.40
+Sharpe Ratio: -1.0621
+Max Drawdown: -1.32%
+Annualized Return: 1.56%
+Average Trade Per Days: 0.87

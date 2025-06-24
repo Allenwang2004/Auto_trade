@@ -89,6 +89,27 @@ nav_all['cumpnl'] = nav_all['nav'] - initial_cash
 realized_all = pd.concat([realized_in.assign(in_sample=True), realized_out.assign(in_sample=False)])
 realized_all = realized_all.sort_values('datetime')
 
+# === Step 1: 加總每一筆交易的報酬 ===
+total_return = realized_all['return'].sum()
+
+# === Step 2: 取得總交易期間的天數 ===
+start_date = realized_all['datetime'].min()
+end_date = realized_all['datetime'].max()
+total_days = (end_date - start_date).days
+total_trade = len(realized_all)
+avg_trade_per_days = total_trade / total_days if total_days > 0 else 0
+
+# 如果時間跨度為0天，避免除以0
+if total_days == 0:
+    avg_daily_return = 0
+    annualized_return = 0
+else:
+    # === Step 3: 日報酬 = 總報酬 / 總交易天數 ===
+    avg_daily_return = total_return / total_days
+
+    # === Step 4: 年化報酬 = (1 + 日報酬)^(365) - 1 ===
+    annualized_return = (1 + avg_daily_return) ** 365 - 1
+
 nav_all.to_csv(f"record/{strategy_name}/nav_records.csv")
 realized_all.to_csv(f"record/{strategy_name}/realized_records.csv", index=False)
 
@@ -102,6 +123,8 @@ with open(f"record/{strategy_name}/summary.txt", "w") as f:
     f.write(f"Out-of-sample PnL: {pnl_out:.2f}\n")
     f.write(f"Sharpe Ratio: {sharpe_ratio:.4f}\n")
     f.write(f"Max Drawdown: {max_drawdown:.2%}\n")
+    f.write(f"Annualized Return: {annualized_return:.2%}\n")
+    f.write(f"Average Trade Per Days: {avg_trade_per_days:.2f}\n")
 
 fig, axs = plt.subplots(2, 1, figsize=(14, 8), sharex=True)
 axs[0].plot(nav_all.index, nav_all['nav'] - initial_cash, label='Net Asset Value')
